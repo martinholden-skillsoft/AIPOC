@@ -522,12 +522,12 @@ namespace AIPOC
                 log.InfoFormat("Populating the CombinedAssetObject by reading the elements from XML. xpath: {0}", xpath);
                 var node = navigator.SelectSingleNode(xpath, nsmgr);
 
-                log.DebugFormat("Select Language using xPath at the Node: {0}", "//dc:language");
-                results.LANGUAGE = node.SelectSingleNode("//dc:language", nsmgr) == null ? "" : node.SelectSingleNode("//dc:language", nsmgr).Value;
-                log.DebugFormat("Select Description using xPath at the Node: {0}", "//dc:description");
-                results.DESCRIPTION = node.SelectSingleNode("//dc:description", nsmgr) == null ? "" : node.SelectSingleNode("//dc:description", nsmgr).Value;
-                log.DebugFormat("Select Duration using xPath at the Node: {0}", "//olsa:description");
-                results.DURATION = node.SelectSingleNode("//olsa:duration", nsmgr) == null ? "" : node.SelectSingleNode("//olsa:duration", nsmgr).Value;
+                log.DebugFormat("Select Language using xPath at the Node: {0}", "dc:language");
+                results.LANGUAGE = node.SelectSingleNode("dc:language", nsmgr) == null ? "" : node.SelectSingleNode("dc:language", nsmgr).Value;
+                log.DebugFormat("Select Description using xPath at the Node: {0}", "dc:description");
+                results.DESCRIPTION = node.SelectSingleNode("dc:description", nsmgr) == null ? "" : node.SelectSingleNode("dc:description", nsmgr).Value;
+                log.DebugFormat("Select Duration using xPath at the Node: {0}", "olsa:duration");
+                results.DURATION = node.SelectSingleNode("olsa:duration", nsmgr) == null ? "" : node.SelectSingleNode("olsa:duration", nsmgr).Value;
             }
             return results;
         }
