@@ -626,7 +626,7 @@ namespace AIPOC
                 }
             }
             DateTime now = DateTime.UtcNow;
-            string jsonFilename = String.Format("JSONDATA-{0:D4}{1:D2}{2:D2}T{3:D2}{4:D2}{5:D2}Z.zip",
+            string jsonFilename = String.Format("JSONDATA-{0:D4}{1:D2}{2:D2}T{3:D2}{4:D2}{5:D2}Z.json",
                                               now.Year, now.Month, now.Day,
                                               now.Hour, now.Minute, now.Second);
 
