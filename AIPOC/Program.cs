@@ -526,8 +526,8 @@ namespace AIPOC
                 results.LANGUAGE = node.SelectSingleNode("//dc:language", nsmgr) == null ? "" : node.SelectSingleNode("//dc:language", nsmgr).Value;
                 log.DebugFormat("Select Description using xPath at the Node: {0}", "//dc:description");
                 results.DESCRIPTION = node.SelectSingleNode("//dc:description", nsmgr) == null ? "" : node.SelectSingleNode("//dc:description", nsmgr).Value;
-                log.DebugFormat("Select Duration using xPath at the Node: {0}", "//dc:description");
-                results.DURATION = node.SelectSingleNode("//dc:duration", nsmgr) == null ? "" : node.SelectSingleNode("//dc:duration", nsmgr).Value;
+                log.DebugFormat("Select Duration using xPath at the Node: {0}", "//olsa:description");
+                results.DURATION = node.SelectSingleNode("//olsa:duration", nsmgr) == null ? "" : node.SelectSingleNode("//olsa:duration", nsmgr).Value;
             }
             return results;
         }
