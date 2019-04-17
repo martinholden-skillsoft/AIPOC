@@ -18,6 +18,7 @@ using Olsa.WCF.Extensions;
 using Newtonsoft.Json;
 using System.ServiceModel.Channels;
 using CommandLine;
+using System.Xml.Serialization;
 
 namespace AIPOC
 {
@@ -290,26 +291,24 @@ namespace AIPOC
             bool pollComplete = false;
             Uri reportUri = null;
 
-            int _attempt = 0;
+            int _attempt = 1;
             //Loop until the report is ready OR we exceed our retries number
             do
             {
-                log.InfoFormat("Waiting before checking if data ready. Attempt: {0} of {1}", _attempt + 1, retries);
+                //Check attempts not greater than number of retries  
+                if (_attempt > retries)
+                {
+                    pollComplete = false;
+                    throw new Exceptions.OlsaPollTimeOutException(string.Format(CultureInfo.CurrentCulture, "Number of retries exceeded. retries={0} interval={1}", retries, interval));
+                }
+
+                log.InfoFormat("Waiting before checking if data ready. Attempt: {0} of {1}", _attempt, retries);
                 // wait before Polling for the response
                 if (!pollComplete)
                 {
                     Thread.Sleep(interval);
                 }
 
-
-                //Increment attempt
-                _attempt++;
-
-                //Check attempts not greater than number of retries  
-                if (_attempt > retries)
-                {
-                    throw new Exceptions.OlsaPollTimeOutException(string.Format(CultureInfo.CurrentCulture, "Number of retries exceeded. retries={0} interval={1}", retries, interval));
-                }
 
                 try
                 {
@@ -323,8 +322,8 @@ namespace AIPOC
                     pollComplete = false;
                 }
 
-
-
+                //Increment attempt
+                _attempt++;
 
             } while (!pollComplete);
             return reportUri;
@@ -467,6 +466,21 @@ namespace AIPOC
             return document.CreateNavigator();
         }
 
+        static metadata GetCustomerCatalog(string xmlFolder)
+        {
+            DirectoryInfo d = new DirectoryInfo(xmlFolder);
+            FileInfo catalog = d.GetFiles("Customer_Catalog_*.xml").FirstOrDefault();
+
+            log.InfoFormat("Located the downloaded XML catalog: {0}", catalog.Name);
+
+            using (TextReader reader = new StreamReader(catalog.FullName))
+            {
+                XmlSerializer serializer = new XmlSerializer(typeof(metadata));
+                return (metadata)serializer.Deserialize(reader);
+            }
+
+        }
+
 
         /// <summary>
         /// Gets the combined object from metadata.
@@ -513,7 +527,7 @@ namespace AIPOC
 
 
                 //Read the XML
-                
+
                 XmlNamespaceManager nsmgr = new XmlNamespaceManager(navigator.NameTable);
                 nsmgr.AddNamespace("olsa", "http://www.skillsoft.com/services/olsa_v1_0/");
                 nsmgr.AddNamespace("dc", "http://purl.org/dc/elements/1.1/");
@@ -528,9 +542,48 @@ namespace AIPOC
                 results.DESCRIPTION = node.SelectSingleNode("dc:description", nsmgr) == null ? "" : node.SelectSingleNode("dc:description", nsmgr).Value;
                 log.DebugFormat("Select Duration using xPath at the Node: {0}", "olsa:duration");
                 results.DURATION = node.SelectSingleNode("olsa:duration", nsmgr) == null ? "" : node.SelectSingleNode("olsa:duration", nsmgr).Value;
+
+                log.DebugFormat("Select imageurl using xPath at the Node: {0}", "extendedfieldValues/fieldValue[@id=\"imageurl\"]/value");
+                results.IMAGEURL = node.SelectSingleNode("extendedfieldValues/fieldValue[@id=\"imageurl\"]/value", nsmgr) == null ? "" : node.SelectSingleNode("extendedfieldValues/fieldValue[@id=\"imageurl\"]/value", nsmgr).Value;
+
+                log.DebugFormat("Select mobilestatus using xPath at the Node: {0}", "extendedfieldValues/fieldValue[@id=\"mobilestatus\"]/value");
+                results.MOBILESTATUS = node.SelectSingleNode("extendedfieldValues/fieldValue[@id=\"mobilestatus\"]/value", nsmgr) == null ? "" : node.SelectSingleNode("extendedfieldValues/fieldValue[@id=\"mobilestatus\"]/value", nsmgr).Value;
+
+                log.DebugFormat("Select keywords using xPath at the Node: {0}", "extendedfieldValues/fieldValue[@id=\"keywords\"]/value");
+                var keywords = node.SelectSingleNode("extendedfieldValues/fieldValue[@id=\"keywords\"]/value", nsmgr) == null ? "" : node.SelectSingleNode("extendedfieldValues/fieldValue[@id=\"keywords\"]/value", nsmgr).Value;
+                if (!string.IsNullOrEmpty(keywords))
+                {
+                    results.KEYWORDS = keywords.Split(';').ToList();
+                }
+
             }
             return results;
         }
+
+        static CombinedAssetObject GetCombinedObjectFromXMLMetadata(string assetid, string status, metadataAsset item)
+        {
+            CombinedAssetObject results = new CombinedAssetObject();
+            results.ASSETID = assetid;
+            results.STATUS = status;
+
+            //If status NOT not_entitled then extract the extra data
+            if (!status.Equals("not_entitled", StringComparison.InvariantCultureIgnoreCase))
+            {
+                results.AU = GetAUFromXMLMetadata(item);
+                results.CRS = GetCRSFromXMLMetadata(item);
+                results.CST = GetCSTFromXMLMetadata(item);
+                results.DES = GetDESFromXMLMetadata(item);
+                results.ORT = GetORTFromXMLMetadata(item);
+
+
+                results.LANGUAGE = item.language;
+                results.DESCRIPTION = item.description;
+                results.DURATION = item.duration;
+            }
+            return results;
+        }
+
+
         #endregion
 
 
@@ -592,7 +645,7 @@ namespace AIPOC
             AI_AcknowledgeAssetMetaData(client, null);
 
             //Call and get the XML data, send NULL acknowledgement
-            var xmlResultsFile = DownloadMetadata(client, assetMetadataFormat.XML, assetMode, false, false, interval, retries);
+            var xmlResultsFile = DownloadMetadata(client, assetMetadataFormat.XMLX, assetMode, false, false, interval, retries);
 
             //Call and get the AICC data, send acknowledgement of the returned handled
             var aiccResultsFile = DownloadMetadata(client, assetMetadataFormat.AICC, assetMode, true, false, interval, retries);
@@ -636,10 +689,100 @@ namespace AIPOC
             File.WriteAllText(jsonFilename, jsonStr);
         }
 
+        static string GetAUFromXMLMetadata(metadataAsset item, string defaultMasteryValue = "80")
+        {
+            //Do checks
+            //Check for AICC URL
+            var launchUrl = item.launchurl.Where(i => i.launchtype == "aicc").FirstOrDefault();
+            if (launchUrl == null)
+            {
+                throw new ArgumentNullException("AICC launchUrl missing for asset");
+            }
+
+            //Check for mastery
+            var mastery = item.extendedfieldValues.Where(i => i.id == "masteryscore").FirstOrDefault();
+            if (mastery == null || String.IsNullOrEmpty(mastery.value))
+            {
+                mastery = new metadataAssetFieldValue() { id = "masteryscore", value = defaultMasteryValue };
+            }
+
+            string AUTEMPLATE = "\"system_id\",\"type\",\"command_line\",\"Max_Time_Allowed\",\"time_limit_action\",\"file_name\",\"max_score\",\"mastery_score\",\"system_vendor\",\"core_vendor\",\"Web_Launch\",\"au_Password\"";
+            AUTEMPLATE += "\r\n\"A0\",\"Course\",\"\",\"\",\"\",\"{0}\",\"\",\"{1}\",\"Skillsoft\",\"\",\"\",\"\"";
+            //{0} = file_name
+            //{1} = mastery
+            string result = String.Format(AUTEMPLATE, WebUtility.UrlDecode(launchUrl.Value), mastery.value);
+
+            return result;
+        }
+
+        static string GetCRSFromXMLMetadata(metadataAsset item, int maxDescription = 4096)
+        {
+            //Do checks
+            string CRSTEMPLATE = "[Course]\r\n";
+            CRSTEMPLATE += "Course_Creator=SkillSoft\r\n";
+            CRSTEMPLATE += "Course_System=SkillSoft Development\r\n";
+            CRSTEMPLATE += "Course_Title={0}\r\n";
+            CRSTEMPLATE += "Course_ID={1}\r\n";
+            CRSTEMPLATE += "Level=1\r\n";
+            CRSTEMPLATE += "Max_Fields_CST=2\r\n";
+            CRSTEMPLATE += "Total_AUs=1\r\n";
+            CRSTEMPLATE += "Total_Blocks=0\r\n";
+            CRSTEMPLATE += "Version=2.2\r\n";
+            CRSTEMPLATE += "[Course_Behavior]\r\n";
+            CRSTEMPLATE += "Max_Normal=99\r\n";
+            CRSTEMPLATE += "[Course_Description]\r\n";
+            CRSTEMPLATE += "{2}\r\n";
+
+            //{0} =title
+            //{1} = id
+            //{2} = description
+
+
+
+            string result = String.Format(CRSTEMPLATE, item.title.Length > 255 ? item.title.Substring(0, 255) : item.title, item.identifier, item.description.Length > maxDescription ? item.description.Substring(0, maxDescription) : item.description);
+
+            return result;
+        }
+
+        static string GetCSTFromXMLMetadata(metadataAsset item)
+        {
+            //Do checks
+            string CSTTEMPLATE = "\"block\",\"member\"\r\n";
+            CSTTEMPLATE += "\"root\",\"A0\"\r\n";
+            return CSTTEMPLATE;
+        }
+
+        static string GetDESFromXMLMetadata(metadataAsset item, int maxDescription = 4096)
+        {
+            //Do checks
+            string DESTEMPLATE = "\"system_id\",\"developer_id\",\"title\",\"description\"\r\n";
+            DESTEMPLATE += "\"A0\",\"{0}\",\"{1}\",\"{2}\"\r\n";
+
+            //{0} =id
+            //{1} =title
+            //{2} =description
+            string result = String.Format(DESTEMPLATE, item.identifier, item.title.Length > 255 ? item.title.Substring(0, 255) : item.title, item.description.Length > maxDescription ? item.description.Substring(0, maxDescription) : item.description);
+
+            return result;
+        }
+
+        static string GetORTFromXMLMetadata(metadataAsset item)
+        {
+            //Do checks
+            string ORTTEMPLATE = "\"Course_Element\"\r\n";
+            ORTTEMPLATE += "\"A0\"\r\n";
+            return ORTTEMPLATE;
+        }
 
         static void Main(string[] args)
         {
             log = LogManager.GetLogger("AI_POC");
+
+            //metadata catalog = GetCustomerCatalog(@"C:\Users\mnholden\Documents\GitHub\AIPOC\AIPOC\bin\Debug\METADATA-XMLX-20190121T121838Z");
+
+            //metadataAsset item = catalog.Items.First();
+            //var result = GetCombinedObjectFromXMLMetadata(item.identifier, "entitled", item);
+
 
             OlsaPortTypeClient client = null;
 

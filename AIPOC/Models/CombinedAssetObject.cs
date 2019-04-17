@@ -81,11 +81,35 @@ namespace AIPOC.Models
         public string DURATION { get; set; }
 
         /// <summary>
-        /// Gets or sets the duration this is from the XML metadata
+        /// Gets or sets the description this is from the XML metadata
         /// </summary>
         /// <value>
         /// The status.
         /// </value>
         public string DESCRIPTION { get; set; }
+
+        /// <summary>
+        /// Gets or sets the imageurl this is from the XML metadata
+        /// </summary>
+        /// <value>
+        /// The status.
+        /// </value>
+        public string IMAGEURL { get; set; }
+
+        /// <summary>
+        /// Gets or sets the mobilestatus this is from the XML metadata
+        /// </summary>
+        /// <value>
+        /// The status.
+        /// </value>
+        public string MOBILESTATUS { get; set; }
+
+        /// <summary>
+        /// Gets or sets the list of keywords this is from the XML metadata
+        /// </summary>
+        /// <value>
+        /// The status.
+        /// </value>
+        public List<string> KEYWORDS { get; set; }
     }
 }
